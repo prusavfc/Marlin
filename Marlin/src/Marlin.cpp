@@ -1,9 +1,9 @@
 /**
  * Marlin 3D Printer Firmware
- * Copyright (C) 2019 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
+ * Copyright (c) 2019 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
  *
  * Based on Sprinter and grbl.
- * Copyright (C) 2011 Camiel Gubbels / Erik van der Zalm
+ * Copyright (c) 2011 Camiel Gubbels / Erik van der Zalm
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -106,6 +106,10 @@
   #include "feature/tmc_util.h"
 #endif
 
+#if HAS_CUTTER
+  #include "feature/spindle_laser.h"
+#endif
+
 #if ENABLED(SDSUPPORT)
   CardReader card;
 #endif
@@ -149,7 +153,7 @@
   #include "feature/fanmux.h"
 #endif
 
-#if DO_SWITCH_EXTRUDER || ANY(SWITCHING_NOZZLE, PARKING_EXTRUDER, MAGNETIC_PARKING_EXTRUDER)
+#if DO_SWITCH_EXTRUDER || ANY(SWITCHING_NOZZLE, PARKING_EXTRUDER, MAGNETIC_PARKING_EXTRUDER, ELECTROMAGNETIC_SWITCHING_TOOLHEAD)
   #include "module/tool_change.h"
 #endif
 
@@ -822,9 +826,7 @@ void stop() {
  */
 void setup() {
 
-  #ifdef HAL_INIT
-    HAL_init();
-  #endif
+  HAL_init();
 
   #if HAS_DRIVER(L6470)
     L6470.init();         // setup SPI and then init chips
@@ -939,7 +941,9 @@ void setup() {
 
   // Load data from EEPROM if available (or use defaults)
   // This also updates variables in the planner, elsewhere
-  (void)settings.load();
+  #if DISABLED(SD_EEPROM_EMULATION)
+    (void)settings.load();
+  #endif
 
   #if HAS_M206_COMMAND
     // Initialize current position based on home_offset
@@ -969,15 +973,8 @@ void setup() {
     OUT_WRITE(PHOTOGRAPH_PIN, LOW);
   #endif
 
-  #if ENABLED(SPINDLE_LASER_ENABLE)
-    OUT_WRITE(SPINDLE_LASER_ENA_PIN, !SPINDLE_LASER_ENABLE_INVERT);  // init spindle to off
-    #if SPINDLE_DIR_CHANGE
-      OUT_WRITE(SPINDLE_DIR_PIN, SPINDLE_INVERT_DIR ? 255 : 0);  // init rotation to clockwise (M3)
-    #endif
-    #if ENABLED(SPINDLE_LASER_PWM) && defined(SPINDLE_LASER_PWM_PIN) && SPINDLE_LASER_PWM_PIN >= 0
-      SET_PWM(SPINDLE_LASER_PWM_PIN);
-      analogWrite(SPINDLE_LASER_PWM_PIN, SPINDLE_LASER_PWM_INVERT ? 255 : 0);  // set to lowest speed
-    #endif
+  #if HAS_CUTTER
+    cutter.init();
   #endif
 
   #if ENABLED(COOLANT_MIST)
@@ -1083,6 +1080,10 @@ void setup() {
     pe_solenoid_init();
   #endif
 
+  #if ENABLED(ELECTROMAGNETIC_SWITCHING_TOOLHEAD)
+    est_init();
+  #endif
+
   #if ENABLED(POWER_LOSS_RECOVERY)
     recovery.check();
   #endif
@@ -1095,8 +1096,17 @@ void setup() {
     init_closedloop();
   #endif
 
-  #if ENABLED(INIT_SDCARD_ON_BOOT) && DISABLED(ULTRA_LCD)
-    card.beginautostart();
+  #if !HAS_SPI_LCD
+
+    #if ENABLED(SD_EEPROM_EMULATION)
+      SERIAL_ECHOLNPGM("Loading settings from SD");
+      (void)settings.load();
+    #endif
+
+    #if ENABLED(INIT_SDCARD_ON_BOOT)
+      card.beginautostart();
+    #endif
+
   #endif
 
   #if HAS_TRINAMIC && DISABLED(PS_DEFAULT_OFF)
