@@ -290,6 +290,15 @@ void enable_all_steppers() {
   enable_E5();
 }
 
+void enable_e_steppers() {
+  enable_E0();
+  enable_E1();
+  enable_E2();
+  enable_E3();
+  enable_E4();
+  enable_E5();
+}
+
 void disable_e_steppers() {
   disable_E0();
   disable_E1();
@@ -661,9 +670,14 @@ void idle(
 ) {
 
   #if ENABLED(SPI_ENDSTOPS)
-    if (endstops.tmc_spi_homing.any && ELAPSED(millis(), sg_guard_period))
+    if (endstops.tmc_spi_homing.any
+      #if ENABLED(IMPROVE_HOMING_RELIABILITY)
+        && ELAPSED(millis(), sg_guard_period)
+      #endif
+    ) {
       for (uint8_t i = 4; i--;) // Read SGT 4 times per idle loop
         if (endstops.tmc_spi_homing_check()) break;
+    }
   #endif
 
   #if ENABLED(MAX7219_DEBUG)
@@ -1110,6 +1124,10 @@ void setup() {
 
   #if ENABLED(EXTERNAL_CLOSED_LOOP_CONTROLLER)
     init_closedloop();
+  #endif
+
+  #ifdef STARTUP_COMMANDS
+    queue.inject_P(PSTR(STARTUP_COMMANDS));
   #endif
 
   #if ENABLED(INIT_SDCARD_ON_BOOT) && !HAS_SPI_LCD
